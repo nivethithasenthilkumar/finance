@@ -149,7 +149,7 @@ export default function ProfilePage() {
               <div key={f.key}>
                 <label className="text-[11px] font-bold text-[#6e7978] uppercase block mb-1">{f.label}</label>
                 <input type={f.type}
-                  value={(displayProfile as Record<string, string>)[f.key] || ""}
+                  value={(displayProfile as any)[f.key] || ""}
                   disabled={!isEditing}
                   onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.value }))}
                   className="w-full px-3 py-2.5 bg-[#f6f3f2] border border-[#bec9c7]/60 rounded-xl text-[14px] text-[#1c1b1b] focus:outline-none focus:ring-2 focus:ring-[#00534e]/25 disabled:opacity-70 transition-all"

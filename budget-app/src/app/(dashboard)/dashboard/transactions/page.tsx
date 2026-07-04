@@ -78,7 +78,7 @@ function TxForm({ initial, onSave, onClose }: TxFormProps) {
   const [subtitle, setSub]    = useState(initial?.subtitle ?? "");
   const [amount, setAmount]   = useState(String(initial?.amount ?? ""));
   const [date, setDate]       = useState(initial?.date ?? new Date().toISOString().slice(0,10));
-  const [type, setType]       = useState<TxType>(initial?.type ?? "expense");
+  const [type, setType]       = useState<Transaction["type"]>(initial?.type ?? "expense");
   const [cat, setCat]         = useState(initial?.category ?? "Food");
   const [account, setAccount] = useState(initial?.account ?? "Chase Checking");
   const [accountNum, setNum]  = useState(initial?.accountNum ?? "•••• 1234");
@@ -107,7 +107,7 @@ function TxForm({ initial, onSave, onClose }: TxFormProps) {
 
       {/* Type toggle */}
       <div className="flex rounded-xl overflow-hidden border border-[#bec9c7]/40">
-        {(["expense","income"] as TxType[]).map(t => (
+        {(["expense","income"] as Transaction["type"][]).map(t => (
           <button key={t} type="button" onClick={() => setType(t)}
             className={`flex-1 py-2.5 text-[13px] font-bold capitalize transition-colors ${type===t ? (t==="income"?"bg-[#00534e] text-white":"bg-[#ba1a1a] text-white") : "bg-[#f6f3f2] text-[#3e4947]"}`}>
             {t}
