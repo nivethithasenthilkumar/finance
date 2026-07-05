@@ -64,6 +64,8 @@ export interface Goal {
 // HELPERS
 // ─────────────────────────────────────────────────────────
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
 const BLANK_PROFILE: UserProfile = {
   name: "", email: "", phone: "", avatar: null,
   currency: "USD", language: "English", plan: "Free",
@@ -160,6 +162,81 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const totalSavings  = totalIncome - totalExpenses;
   const totalBalance  = totalSavings;
 
+  const fetchUserData = useCallback(async (email: string) => {
+    if (!email) return;
+    try {
+      const resProfile = await fetch(`${API_BASE_URL}/api/user/profile?email=${encodeURIComponent(email)}`);
+      if (resProfile.ok) {
+        const u = await resProfile.json();
+        const updated: UserProfile = {
+          name: u.name || "",
+          email: u.email || "",
+          phone: u.phone || "",
+          avatar: u.avatar || null,
+          currency: u.currency || "USD",
+          language: u.language || "English",
+          plan: u.plan || "Free",
+          joinDate: u.joinDate || new Date().toISOString().slice(0, 10),
+          initials: makeInitials(u.name || u.email),
+          cameraAccess: u.cameraAccess || false,
+        };
+        setProfile(updated);
+        localStorage.setItem("bpa_profile", JSON.stringify(updated));
+      }
+
+      const resTx = await fetch(`${API_BASE_URL}/api/transactions?email=${encodeURIComponent(email)}`);
+      if (resTx.ok) {
+        const txs = await resTx.json();
+        const mappedTxs = txs.map((t: any) => ({
+          ...t,
+          id: String(t.id),
+          date: t.date || new Date().toISOString().slice(0, 10)
+        }));
+        setTransactions(mappedTxs);
+        localStorage.setItem("bpa_transactions", JSON.stringify(mappedTxs));
+      }
+
+      const resBg = await fetch(`${API_BASE_URL}/api/budgets?email=${encodeURIComponent(email)}`);
+      if (resBg.ok) {
+        const bgs = await resBg.json();
+        const mappedBgs = bgs.map((b: any) => ({
+          id: String(b.id),
+          name: b.name || "",
+          category: b.category || "",
+          budget: b.budgetLimit || 0,
+          spent: 0,
+          barColor: b.barColor || "bg-[#00534e]",
+          iconBg: b.iconBg || "bg-[#00534e]/10",
+          iconColor: b.iconColor || "text-[#00534e]"
+        }));
+        setBudgetsRaw(mappedBgs);
+        localStorage.setItem("bpa_budgets", JSON.stringify(mappedBgs));
+      }
+
+      const resGl = await fetch(`${API_BASE_URL}/api/goals?email=${encodeURIComponent(email)}`);
+      if (resGl.ok) {
+        const gls = await resGl.json();
+        const mappedGls = gls.map((g: any) => ({
+          id: String(g.id),
+          name: g.name || "",
+          category: g.category || "",
+          ringColorHex: g.ringColorHex || "#00534e",
+          textColor: g.textColor || "text-[#00534e]",
+          statusBg: g.statusBg || "bg-[#00534e]/10",
+          statusText: g.statusText || "text-[#00534e]",
+          statusLabel: g.statusLabel || "On Track",
+          current: g.current || 0,
+          target: g.target || 0,
+          expected: g.expected || ""
+        }));
+        setGoals(mappedGls);
+        localStorage.setItem("bpa_goals", JSON.stringify(mappedGls));
+      }
+    } catch (e) {
+      console.error("Error fetching user data", e);
+    }
+  }, []);
+
   // ── Rehydrate from localStorage ──
   useEffect(() => {
     try {
@@ -168,13 +245,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const tx = localStorage.getItem("bpa_transactions");
       const bg = localStorage.getItem("bpa_budgets");
       const gl = localStorage.getItem("bpa_goals");
-      if (p)  setProfile({ ...BLANK_PROFILE, ...JSON.parse(p) });
+      if (p) {
+        const parsedProfile = JSON.parse(p);
+        setProfile({ ...BLANK_PROFILE, ...parsedProfile });
+        if (parsedProfile.email) {
+          fetchUserData(parsedProfile.email);
+        }
+      }
       if (tx) setTransactions(JSON.parse(tx));
       if (bg) setBudgetsRaw(JSON.parse(bg));
       if (gl) setGoals(JSON.parse(gl));
       setIsLoggedIn(li);
     } catch {}
-  }, []);
+  }, [fetchUserData]);
 
   const profileComplete = !!(profile.name && profile.email);
 
@@ -193,6 +276,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     persistProfile(updated);
     setIsLoggedIn(true);
     localStorage.setItem("bpa_logged_in", "true");
+    fetchUserData(email);
   };
 
   const logout = () => {
@@ -210,7 +294,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     };
     persistProfile(updated);
     if (profile.email) {
-      fetch("http://localhost:8080/api/user/profile", {
+      fetch(`${API_BASE_URL}/api/user/profile`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       }).catch(() => {});
@@ -220,7 +304,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const setCameraAccess = async (enabled: boolean) => {
     persistProfile({ ...profile, cameraAccess: enabled });
     try {
-      await fetch("http://localhost:8080/api/user/camera-access", {
+      await fetch(`${API_BASE_URL}/api/user/camera-access`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: profile.email, cameraAccess: enabled }),
       });
@@ -233,7 +317,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("bpa_transactions", JSON.stringify(list));
     // Sync to backend (fire-and-forget)
     if (list.length > 0) {
-      fetch("http://localhost:8080/api/transactions/bulk", {
+      fetch(`${API_BASE_URL}/api/transactions/bulk`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: profile.email, transactions: list }),
       }).catch(() => {});
@@ -257,7 +341,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const saveBudgets = (list: Budget[]) => {
     setBudgetsRaw(list);
     localStorage.setItem("bpa_budgets", JSON.stringify(list));
-    fetch("http://localhost:8080/api/budgets/bulk", {
+    fetch(`${API_BASE_URL}/api/budgets/bulk`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: profile.email, budgets: list }),
     }).catch(() => {});
@@ -279,7 +363,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const saveGoals = (list: Goal[]) => {
     setGoals(list);
     localStorage.setItem("bpa_goals", JSON.stringify(list));
-    fetch("http://localhost:8080/api/goals/bulk", {
+    fetch(`${API_BASE_URL}/api/goals/bulk`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: profile.email, goals: list }),
     }).catch(() => {});
@@ -312,7 +396,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     } catch (e) {}
 
     if (profile.email) {
-      fetch(`http://localhost:8080/api/chats?email=${encodeURIComponent(profile.email)}`)
+      fetch(`${API_BASE_URL}/api/chats?email=${encodeURIComponent(profile.email)}`)
         .then(res => res.json())
         .then(data => {
           setAiChats(data);
@@ -334,7 +418,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       return newChats;
     });
 
-    fetch(`http://localhost:8080/api/chats?email=${encodeURIComponent(profile.email || "")}`, {
+    fetch(`${API_BASE_URL}/api/chats?email=${encodeURIComponent(profile.email || "")}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(chat),
     }).catch(() => {});

@@ -19,6 +19,8 @@ import { useAppStore } from "@/lib/app-store";
 
 type PhoneView = "dashboard" | "login" | "register";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
 function useCounter(target: number, duration = 1500, trigger = true) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -78,7 +80,7 @@ export default function HomePage() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const res = await fetch("http://localhost:8080/api/auth/login", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -105,7 +107,7 @@ export default function HomePage() {
     setLoading(true);
     setErrorMsg("");
     try {
-      const res = await fetch("http://localhost:8080/api/auth/register", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAppStore } from "@/lib/app-store";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, TrendingDown, AlertTriangle, Sparkles, X, Check,
@@ -30,6 +31,17 @@ const INITIAL_CATS: BudgetCategory[] = [
   { id:"c6", name:"Entertainment", icon:<Tv className="w-4 h-4"/>,          iconBg:"bg-[#00534e]/10", iconColor:"text-[#00534e]", budget:300,  spent:135.20,  status:"on-track", statusColor:"text-[#00534e]", barColor:"bg-[#00534e]" },
 ];
 
+function getCategoryIcon(catName: string) {
+  const name = (catName || "").toLowerCase();
+  if (name.includes("hous") || name.includes("rent") || name.includes("home")) return <Home className="w-4 h-4"/>;
+  if (name.includes("food") || name.includes("eat") || name.includes("grocer") || name.includes("rest")) return <Utensils className="w-4 h-4"/>;
+  if (name.includes("car") || name.includes("travel") || name.includes("trans")) return <Car className="w-4 h-4"/>;
+  if (name.includes("util") || name.includes("bill") || name.includes("power") || name.includes("elect")) return <Zap className="w-4 h-4"/>;
+  if (name.includes("shop") || name.includes("buy") || name.includes("cloth")) return <ShoppingBag className="w-4 h-4"/>;
+  if (name.includes("show") || name.includes("movi") || name.includes("play") || name.includes("tv") || name.includes("ent")) return <Tv className="w-4 h-4"/>;
+  return <Sparkles className="w-4 h-4"/>;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   "on-track": "On Track",
   "at-risk":  "At Risk",
@@ -49,9 +61,10 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
   return <div className={`bg-white rounded-xl border border-[#e5e2e1] shadow-sm ${className}`}>{children}</div>;
 }
 
-function BudgetModal({ open, onClose, onSave, initial }: {
+function BudgetModal({ open, onClose, onSave, onDelete, initial }: {
   open: boolean; onClose: () => void;
   onSave: (name: string, budget: number) => void;
+  onDelete?: () => void;
   initial?: { name: string; budget: number };
 }) {
   const [bname, setBname] = useState(initial?.name ?? "");
@@ -76,8 +89,8 @@ function BudgetModal({ open, onClose, onSave, initial }: {
         {err && <p className="text-[12px] text-[#ba1a1a] bg-[#ffdad6]/50 rounded-lg px-3 py-2 mb-3">{err}</p>}
         <div className="space-y-3">
           <div>
-            <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Budget Name</label>
-            <input value={bname} onChange={e => setBname(e.target.value)} placeholder="e.g. Monthly Budget June"
+            <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Budget Name / Category</label>
+            <input value={bname} onChange={e => setBname(e.target.value)} placeholder="e.g. Housing, Food, Shopping..."
               className="w-full px-3 py-2.5 border border-[#bec9c7]/60 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00534e]/30 bg-[#fcf9f8]" />
           </div>
           <div>
@@ -87,6 +100,11 @@ function BudgetModal({ open, onClose, onSave, initial }: {
           </div>
         </div>
         <div className="flex gap-2 mt-5">
+          {initial && onDelete && (
+            <button onClick={() => { onDelete(); onClose(); }} className="px-3 py-2.5 border border-[#ba1a1a] text-[#ba1a1a] rounded-xl text-[13px] font-semibold hover:bg-[#ba1a1a]/5">
+              Delete
+            </button>
+          )}
           <button onClick={onClose} className="flex-1 py-2.5 border border-[#bec9c7] rounded-xl text-[13px] font-semibold text-[#3e4947] hover:bg-[#f0edec]">Cancel</button>
           <button onClick={submit} className="flex-[2] py-2.5 bg-[#00534e] text-white rounded-xl text-[13px] font-bold hover:opacity-90 shadow-sm">
             {initial ? "Save Changes" : "Create Budget"}
@@ -98,34 +116,54 @@ function BudgetModal({ open, onClose, onSave, initial }: {
 }
 
 export default function BudgetPlannerPage() {
-  const [cats, setCats] = useState<BudgetCategory[]>(INITIAL_CATS);
+  const { budgets, addBudget, updateBudget, deleteBudget } = useAppStore();
   const [createOpen, setCreateOpen] = useState(false);
-  const [editCat, setEditCat] = useState<BudgetCategory | null>(null);
+  const [editCat, setEditCat] = useState<any | null>(null);
   const [toast, setToast] = useState("");
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const totalBudget  = cats.reduce((a, c) => a + c.budget, 0);
-  const totalSpent   = cats.reduce((a, c) => a + c.spent, 0);
+  const totalBudget  = budgets.reduce((a, c) => a + c.budget, 0);
+  const totalSpent   = budgets.reduce((a, c) => a + c.spent, 0);
   const totalRemain  = totalBudget - totalSpent;
-  const spentPct     = pct(totalSpent, totalBudget);
+  const spentPct     = totalBudget > 0 ? Math.min(Math.round((totalSpent / totalBudget) * 100), 100) : 0;
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
 
   const handleCreateSave = (name: string, budget: number) => {
-    const newCat: BudgetCategory = {
-      id: "c" + Date.now(), name, icon: <Sparkles className="w-4 h-4" />,
-      iconBg: "bg-[#00534e]/10", iconColor: "text-[#00534e]",
-      budget, spent: 0, status: "on-track",
-      statusColor: "text-[#00534e]", barColor: "bg-[#00534e]",
-    };
-    setCats(p => [...p, newCat]);
+    const barColors = ["bg-[#00534e]", "bg-[#fcab28]", "bg-[#006d67]", "bg-[#3c4c4c]", "bg-[#ba1a1a]"];
+    const textColors = ["text-[#00534e]", "text-[#835400]", "text-[#006d67]", "text-[#3c4c4c]", "text-[#ba1a1a]"];
+    const bgColors = ["bg-[#00534e]/10", "bg-[#ffddb5]/40", "bg-[#006d67]/10", "bg-[#3c4c4c]/10", "bg-[#ba1a1a]/10"];
+    
+    const idx = budgets.length % 5;
+
+    addBudget({
+      name,
+      category: name,
+      budget,
+      barColor: barColors[idx],
+      iconBg: bgColors[idx],
+      iconColor: textColors[idx],
+    });
     showToast(`Budget "${name}" created!`);
   };
 
   const handleEditSave = (name: string, budget: number) => {
     if (!editCat) return;
-    setCats(p => p.map(c => c.id === editCat.id ? { ...c, name, budget } : c));
+    updateBudget(editCat.id, {
+      name,
+      category: name,
+      budget,
+      barColor: editCat.barColor,
+      iconBg: editCat.iconBg,
+      iconColor: editCat.iconColor,
+    });
     showToast("Budget updated!");
+  };
+
+  const handleDeleteBudget = () => {
+    if (!editCat) return;
+    deleteBudget(editCat.id);
+    showToast("Budget deleted!");
   };
 
   const triggerCelebration = () => {
@@ -172,9 +210,9 @@ export default function BudgetPlannerPage() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-[#6e7978] text-[#00534e] text-[13px] font-semibold hover:bg-[#f6f3f2] transition-all">
             <Plus className="w-4 h-4" /> Create Budget
           </button>
-          <button onClick={() => showToast("Category added!")}
+          <button onClick={() => setCreateOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#006d67] text-white text-[13px] font-bold hover:opacity-90 transition-all shadow-sm">
-            <Sparkles className="w-4 h-4" /> Add Category
+            <Plus className="w-4 h-4" /> Add Category
           </button>
         </div>
       </div>
@@ -223,50 +261,63 @@ export default function BudgetPlannerPage() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {cats.map(cat => {
-                const p = pct(cat.spent, cat.budget);
-                return (
-                  <Card key={cat.id} className="p-6 hover:shadow-[0_10px_30px_rgba(0,109,103,0.08)] transition-shadow">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`${cat.iconBg} ${cat.iconColor} p-2 rounded-lg`}>{cat.icon}</div>
-                        <span className="font-bold text-[14px] text-[#1c1b1b]">{cat.name}</span>
+            {budgets.length === 0 ? (
+              <div className="bg-white border border-[#e5e2e1] rounded-2xl p-10 text-center flex flex-col items-center justify-center">
+                <div className="text-[40px] mb-3">📊</div>
+                <h4 className="font-bold text-[16px] text-[#1c1b1b] mb-1">No Budgets Created</h4>
+                <p className="text-[13px] text-[#6e7978] mb-4">You haven't set up any budget category limits yet.</p>
+                <button onClick={() => setCreateOpen(true)} className="px-5 py-2.5 bg-[#00534e] text-white text-[13px] font-bold rounded-xl hover:opacity-90 shadow-sm">
+                  + Create Budget Limit
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {budgets.map(cat => {
+                  const p = pct(cat.spent, cat.budget);
+                  const status = p > 90 ? "over" : p > 75 ? "at-risk" : "on-track";
+                  const statusColor = p > 90 ? "text-[#ba1a1a]" : p > 75 ? "text-[#835400]" : "text-[#00534e]";
+                  return (
+                    <Card key={cat.id} className="p-6 hover:shadow-[0_10px_30px_rgba(0,109,103,0.08)] transition-shadow">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`${cat.iconBg} ${cat.iconColor} p-2 rounded-lg`}>{getCategoryIcon(cat.category)}</div>
+                          <span className="font-bold text-[14px] text-[#1c1b1b]">{cat.name}</span>
+                        </div>
+                        <span className={`font-bold text-[14px] ${cat.iconColor}`}>{p}%</span>
                       </div>
-                      <span className={`font-bold text-[14px] ${cat.iconColor}`}>{p}%</span>
-                    </div>
-                    <div className="w-full bg-[#e5e2e1] h-2 rounded-full mb-5">
-                      <motion.div className={`${cat.barColor} h-full rounded-full`}
-                        initial={{ width: 0 }} animate={{ width: `${p}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-center mb-5">
-                      <div>
-                        <p className={`font-bold text-[13px] ${cat.iconColor}`}>{fmt(cat.budget)}</p>
-                        <p className="text-[11px] text-[#6e7978]">Budget</p>
+                      <div className="w-full bg-[#e5e2e1] h-2 rounded-full mb-5">
+                        <motion.div className={`${cat.barColor} h-full rounded-full`}
+                          initial={{ width: 0 }} animate={{ width: `${p}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
                       </div>
-                      <div>
-                        <p className="font-bold text-[13px] text-[#1c1b1b]">{fmt(cat.spent)}</p>
-                        <p className="text-[11px] text-[#6e7978]">Spent</p>
+                      <div className="grid grid-cols-3 gap-2 text-center mb-5">
+                        <div>
+                          <p className={`font-bold text-[13px] ${cat.iconColor}`}>{fmt(cat.budget)}</p>
+                          <p className="text-[11px] text-[#6e7978]">Budget</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-[13px] text-[#1c1b1b]">{fmt(cat.spent)}</p>
+                          <p className="text-[11px] text-[#6e7978]">Spent</p>
+                        </div>
+                        <div>
+                          <p className="font-bold text-[13px] text-[#1c1b1b]">{fmt(cat.budget - cat.spent)}</p>
+                          <p className="text-[11px] text-[#6e7978]">Remaining</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-[13px] text-[#1c1b1b]">{fmt(cat.budget - cat.spent)}</p>
-                        <p className="text-[11px] text-[#6e7978]">Remaining</p>
+                      <div className="flex justify-between items-center pt-4 border-t border-[#e5e2e1]/60">
+                        <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${statusColor}`}>
+                          <div className={`w-2 h-2 rounded-full`} style={{ backgroundColor: "currentColor" }} />
+                          {STATUS_LABELS[status]}
+                        </div>
+                        <button onClick={() => setEditCat(cat)}
+                          className="text-[12px] text-[#3e4947] hover:text-[#00534e] border border-[#bec9c7]/60 px-3 py-1 rounded-lg transition-colors">
+                          Edit Budget
+                        </button>
                       </div>
-                    </div>
-                    <div className="flex justify-between items-center pt-4 border-t border-[#e5e2e1]/60">
-                      <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${cat.statusColor}`}>
-                        <div className={`w-2 h-2 rounded-full`} style={{ backgroundColor: "currentColor" }} />
-                        {STATUS_LABELS[cat.status]}
-                      </div>
-                      <button onClick={() => setEditCat(cat)}
-                        className="text-[12px] text-[#3e4947] hover:text-[#00534e] border border-[#bec9c7]/60 px-3 py-1 rounded-lg transition-colors">
-                        Edit Budget
-                      </button>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* Budget Performance Chart */}
@@ -393,7 +444,7 @@ export default function BudgetPlannerPage() {
       {/* Modals */}
       <BudgetModal open={createOpen} onClose={() => setCreateOpen(false)} onSave={handleCreateSave} />
       {editCat && (
-        <BudgetModal open={!!editCat} onClose={() => setEditCat(null)} onSave={handleEditSave}
+        <BudgetModal open={!!editCat} onClose={() => setEditCat(null)} onSave={handleEditSave} onDelete={handleDeleteBudget}
           initial={{ name: editCat.name, budget: editCat.budget }} />
       )}
     </div>

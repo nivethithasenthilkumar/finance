@@ -263,15 +263,28 @@ export default function AIAssistantPage() {
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRec();
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     
     recognition.onstart = () => setListening(true);
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
+      let finalTranscript = "";
+      let interimTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      
+      const transcript = finalTranscript || interimTranscript;
       setInput(transcript);
-      setListening(false);
-      // Auto-send the transcribed text
-      setTimeout(() => send(transcript, undefined, true), 400);
+      
+      if (finalTranscript) {
+        setListening(false);
+        recognition.stop();
+        setTimeout(() => send(finalTranscript, undefined, true), 500);
+      }
     };
     recognition.onerror = (event: any) => {
       setListening(false);
@@ -433,26 +446,26 @@ export default function AIAssistantPage() {
           <div className="mt-3 p-4 rounded-2xl bg-[#006d67]/5 border border-[#006d67]/15 flex flex-col items-center">
             <div className="flex items-center gap-6 mb-2">
               {/* Left wave bars */}
-              <div className="flex gap-[3px] items-center">
+              <div className={`flex gap-[3px] items-center transition-opacity duration-300 ${listening ? "opacity-100" : "opacity-20"}`}>
                 {[0.1, 0.3, 0.2, 0.4].map((d, i) => (
                   <div key={i} className="w-[3px] bg-[#006d67] rounded-full"
-                    style={{ height: "4px", animation: `pulse-wave 1.2s ease-in-out infinite`, animationDelay: `${d}s` }} />
+                    style={{ height: "4px", animation: listening ? `pulse-wave 1.2s ease-in-out infinite` : "none", animationDelay: `${d}s` }} />
                 ))}
               </div>
               <button onClick={handleMicClick}
-                className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg shadow-[#006d67]/30 active:scale-95 transition-transform ${listening ? "bg-[#006d67]" : "bg-[#006d67]"}`}>
+                className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all duration-300 ${listening ? "bg-[#ba1a1a] shadow-[#ba1a1a]/30" : "bg-[#006d67] shadow-[#006d67]/30"}`}>
                 <Mic className="w-5 h-5 text-white" />
               </button>
               {/* Right wave bars */}
-              <div className="flex gap-[3px] items-center">
+              <div className={`flex gap-[3px] items-center transition-opacity duration-300 ${listening ? "opacity-100" : "opacity-20"}`}>
                 {[0.4, 0.2, 0.5, 0.1].map((d, i) => (
                   <div key={i} className="w-[3px] bg-[#006d67] rounded-full"
-                    style={{ height: "4px", animation: `pulse-wave 1.2s ease-in-out infinite`, animationDelay: `${d}s` }} />
+                    style={{ height: "4px", animation: listening ? `pulse-wave 1.2s ease-in-out infinite` : "none", animationDelay: `${d}s` }} />
                 ))}
               </div>
             </div>
-            <p className="text-[13px] font-bold text-[#006d67]">Tap to speak</p>
-            <p className="text-[11px] text-[#6e7978]">Listening...</p>
+            <p className="text-[13px] font-bold text-[#006d67]">{listening ? "Listening... Speak now! 🎙️" : "Tap mic to speak"}</p>
+            <p className="text-[11px] text-[#6e7978]">{listening ? "I am transcribing your voice in real time." : "Voice assistant is offline."}</p>
           </div>
         </div>
       </section>

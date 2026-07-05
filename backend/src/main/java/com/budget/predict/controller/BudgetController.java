@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/budgets")
@@ -56,11 +57,29 @@ public class BudgetController {
     }
 
     @PostMapping("/bulk")
+    @Transactional
+    @SuppressWarnings("unchecked")
     public ResponseEntity<?> bulk(@RequestBody Map<String, Object> body) {
         String email = (String) body.get("email");
         Optional<User> userOpt = userRepo.findByEmail(email);
         if (userOpt.isEmpty()) return ResponseEntity.notFound().build();
-        budgetRepo.deleteByUser(userOpt.get());
+        User user = userOpt.get();
+        budgetRepo.deleteByUser(user);
+        
+        List<Map<String, Object>> list = (List<Map<String, Object>>) body.get("budgets");
+        if (list != null) {
+            for (Map<String, Object> map : list) {
+                Budget b = new Budget();
+                b.setUser(user);
+                b.setName((String) map.get("name"));
+                b.setCategory((String) map.get("category"));
+                b.setBudgetLimit(map.get("budget") != null ? ((Number) map.get("budget")).doubleValue() : 0.0);
+                b.setBarColor((String) map.get("barColor"));
+                b.setIconBg((String) map.get("iconBg"));
+                b.setIconColor((String) map.get("iconColor"));
+                budgetRepo.save(b);
+            }
+        }
         return ResponseEntity.ok().build();
     }
 }

@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.LocalDate;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/transactions")
@@ -66,6 +68,7 @@ public class TransactionController {
 
     // ── Bulk sync (replaces all user's transactions) ──
     @PostMapping("/bulk")
+    @Transactional
     @SuppressWarnings("unchecked")
     public ResponseEntity<?> bulk(@RequestBody Map<String, Object> body) {
         String email = (String) body.get("email");
@@ -73,7 +76,29 @@ public class TransactionController {
         if (userOpt.isEmpty()) return ResponseEntity.notFound().build();
         User user = userOpt.get();
         txRepo.deleteByUser(user);
-        // Frontend sends raw objects; we accept them as-is via separate endpoint
+        
+        List<Map<String, Object>> list = (List<Map<String, Object>>) body.get("transactions");
+        if (list != null) {
+            for (Map<String, Object> map : list) {
+                Transaction tx = new Transaction();
+                tx.setUser(user);
+                tx.setDescription((String) map.get("description"));
+                tx.setSubtitle((String) map.get("subtitle"));
+                tx.setCategory((String) map.get("category"));
+                tx.setAccount((String) map.get("account"));
+                tx.setAccountNum((String) map.get("accountNum"));
+                tx.setAmount(((Number) map.get("amount")).doubleValue());
+                tx.setType((String) map.get("type"));
+                tx.setIcon((String) map.get("icon"));
+                tx.setRecurring(map.get("recurring") != null ? (Boolean) map.get("recurring") : false);
+                tx.setStatus((String) map.get("status"));
+                String dateStr = (String) map.get("date");
+                if (dateStr != null) {
+                    tx.setDate(LocalDate.parse(dateStr));
+                }
+                txRepo.save(tx);
+            }
+        }
         return ResponseEntity.ok().build();
     }
 }

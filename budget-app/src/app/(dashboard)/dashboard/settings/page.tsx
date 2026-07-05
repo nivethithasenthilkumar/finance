@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useAppStore } from "@/lib/app-store";
 import { useTheme } from "@/lib/theme-provider";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -133,13 +134,15 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { profile, saveProfile } = useAppStore();
   const [active, setActive] = useState<Section>("profile");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Profile
   const [editing, setEditing]       = useState(false);
-  const [name, setName]             = useState("Sarah Johnson");
-  const [email, setEmail]           = useState("sarah.johnson@email.com");
-  const [phone, setPhone]           = useState("+1 (555) 123-4567");
+  const [name, setName]             = useState("");
+  const [email, setEmail]           = useState("");
+  const [phone, setPhone]           = useState("");
   const [tz, setTz]                 = useState("(UTC-05:00) Eastern Time");
 
   // Security
@@ -147,9 +150,18 @@ export default function SettingsPage() {
   const [pwOpen, setPwOpen]         = useState(false);
 
   // Preferences
-  const [currency, setCurrency]     = useState("USD - US Dollar");
+  const [currency, setCurrency]     = useState("USD");
   const [dateFormat, setDateFmt]    = useState("MM/DD/YYYY");
   const [language, setLanguage]     = useState("English");
+
+  // Sync state with global profile
+  useEffect(() => {
+    setName(profile.name || "");
+    setEmail(profile.email || "");
+    setPhone(profile.phone || "");
+    setCurrency(profile.currency || "USD");
+    setLanguage(profile.language || "English");
+  }, [profile]);
 
   // Notifications
   const [notifs, setNotifs] = useState({
@@ -170,6 +182,18 @@ export default function SettingsPage() {
   // Toast
   const [toast, setToast] = useState("");
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      saveProfile({ avatar: b64 });
+      showToast("Avatar updated successfully!");
+    };
+    reader.readAsDataURL(file);
+  };
 
   const nav = (s: Section) => setActive(s);
 
@@ -245,13 +269,21 @@ export default function SettingsPage() {
                   <div className="flex flex-col md:flex-row items-start gap-8">
                     {/* Avatar */}
                     <div className="relative shrink-0">
-                      <div className="w-28 h-28 rounded-full border-4 border-[#9ef1e9] bg-[#006d67] flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
-                        SJ
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-28 h-28 rounded-full border-4 border-[#9ef1e9] bg-[#006d67] flex items-center justify-center text-white text-3xl font-bold overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                      >
+                        {profile.avatar ? (
+                          <img src={profile.avatar} alt="avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          profile.initials || "SJ"
+                        )}
                       </div>
-                      <button onClick={() => showToast("Photo upload coming soon!")}
+                      <button onClick={() => fileInputRef.current?.click()}
                         className="absolute bottom-0 right-0 p-2 bg-[#00534e] text-white rounded-full border-4 border-white shadow-md hover:scale-110 transition-transform">
                         <Edit2 className="w-3 h-3" />
                       </button>
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                     </div>
                     {/* Fields */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5 flex-1">
@@ -277,7 +309,7 @@ export default function SettingsPage() {
                     <div className="flex gap-2 mt-6 justify-end">
                       <button onClick={() => setEditing(false)}
                         className="px-5 py-2.5 border border-[#bec9c7] rounded-xl text-[13px] font-semibold text-[#3e4947] hover:bg-[#f0edec]">Cancel</button>
-                      <button onClick={() => { setEditing(false); showToast("Profile updated successfully!"); }}
+                      <button onClick={() => { saveProfile({ name, email, phone }); setEditing(false); showToast("Profile updated successfully!"); }}
                         className="px-5 py-2.5 bg-[#00534e] text-white rounded-xl text-[13px] font-bold hover:opacity-90 shadow-sm">Save Changes</button>
                     </div>
                   )}

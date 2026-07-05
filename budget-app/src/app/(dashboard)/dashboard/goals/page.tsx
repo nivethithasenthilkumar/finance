@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAppStore } from "@/lib/app-store";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, ShieldCheck, Umbrella, CreditCard, TrendingUp,
@@ -33,6 +34,15 @@ const INITIAL: Goal[] = [
   { id:"g3", name:"Debt Free",       category:"Financial Freedom",    icon:<CreditCard className="w-5 h-5"/>, iconBg:"bg-[#ffdad6]/40",     ringColor:"text-[#ba1a1a]", ringColorHex:"#ba1a1a", textColor:"text-[#ba1a1a]", statusBg:"bg-[#ba1a1a]/10", statusText:"text-[#ba1a1a]", statusLabel:"Behind",   current:2100,  target:7000,  expected:"May 2026", pctOffset:246.30, pct:30 },
   { id:"g4", name:"Investment Goal", category:"Grow Your Wealth",     icon:<TrendingUp className="w-5 h-5"/>, iconBg:"bg-[#d4e6e5]/50",    ringColor:"text-[#3c4c4c]", ringColorHex:"#3c4c4c", textColor:"text-[#3c4c4c]", statusBg:"bg-[#3c4c4c]/10", statusText:"text-[#3c4c4c]", statusLabel:"On Track", current:4000,  target:10000, expected:"Dec 2026", pctOffset:211.11, pct:40 },
 ];
+
+function getGoalIcon(category: string) {
+  const cat = (category || "").toLowerCase();
+  if (cat.includes("secur") || cat.includes("emerg") || cat.includes("protect")) return <ShieldCheck className="w-5 h-5"/>;
+  if (cat.includes("trav") || cat.includes("trip") || cat.includes("vacation") || cat.includes("exper")) return <Umbrella className="w-5 h-5"/>;
+  if (cat.includes("debt") || cat.includes("loan") || cat.includes("card") || cat.includes("pay")) return <CreditCard className="w-5 h-5"/>;
+  if (cat.includes("grow") || cat.includes("invest") || cat.includes("stock") || cat.includes("wealth")) return <TrendingUp className="w-5 h-5"/>;
+  return <Target className="w-5 h-5"/>;
+}
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
@@ -67,9 +77,10 @@ function Ring({ pct, offset, colorHex, label, textColor }: {
 // ── Create Goal Modal ──
 function GoalModal({ open, onClose, onSave }: {
   open: boolean; onClose: () => void;
-  onSave: (name: string, target: number, expected: string) => void;
+  onSave: (name: string, target: number, category: string, expected: string) => void;
 }) {
   const [gname, setGname] = useState("");
+  const [category, setCategory] = useState("Financial Security");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
   const [err, setErr] = useState("");
@@ -79,7 +90,15 @@ function GoalModal({ open, onClose, onSave }: {
     const n = parseFloat(amount);
     if (isNaN(n) || n <= 0) return setErr("Enter a valid target amount.");
     setErr("");
-    onSave(gname.trim(), n, date || "Dec 2025");
+    
+    // Convert date "YYYY-MM-DD" to user-friendly "MMM YYYY"
+    let formattedDate = "Dec 2025";
+    if (date) {
+      const d = new Date(date);
+      formattedDate = d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    }
+    
+    onSave(gname.trim(), n, category, formattedDate);
     onClose();
   };
   return (
@@ -95,12 +114,22 @@ function GoalModal({ open, onClose, onSave }: {
         <div className="space-y-3">
           <div>
             <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Goal Name</label>
-            <input value={gname} onChange={e => setGname(e.target.value)} placeholder="e.g. Dream Vacation"
+            <input value={gname} onChange={e => setGname(e.target.value)} placeholder="e.g. Emergency Fund"
               className="w-full px-3 py-2.5 border border-[#bec9c7]/60 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00534e]/30 bg-[#fcf9f8]" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Category</label>
+            <select value={category} onChange={e => setCategory(e.target.value)}
+              className="w-full px-3 py-2.5 border border-[#bec9c7]/60 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00534e]/30 bg-[#fcf9f8] text-[#1c1b1b]">
+              <option value="Financial Security">Financial Security</option>
+              <option value="Travel & Experiences">Travel & Experiences</option>
+              <option value="Financial Freedom">Financial Freedom</option>
+              <option value="Grow Your Wealth">Grow Your Wealth</option>
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Target Amount ($)</label>
+              <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Target ($)</label>
               <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="5000" type="number" min="0"
                 className="w-full px-3 py-2.5 border border-[#bec9c7]/60 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00534e]/30 bg-[#fcf9f8]" />
             </div>
@@ -120,9 +149,69 @@ function GoalModal({ open, onClose, onSave }: {
   );
 }
 
+function AddMoneyModal({ open, onClose, goals, onAdd }: {
+  open: boolean;
+  onClose: () => void;
+  goals: any[];
+  onAdd: (goalId: string, amount: number) => void;
+}) {
+  const [selectedId, setSelectedId] = useState(goals[0]?.id || "");
+  const [amount, setAmount] = useState("");
+  const [err, setErr] = useState("");
+
+  if (!open) return null;
+
+  const submit = () => {
+    if (!selectedId) return setErr("Please select a goal.");
+    const val = parseFloat(amount);
+    if (isNaN(val) || val <= 0) return setErr("Enter a valid amount.");
+    onAdd(selectedId, val);
+    setAmount("");
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="text-[18px] font-bold text-[#1c1b1b]">Add Money to Goal</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#f0edec] text-[#6e7978]"><X className="w-4 h-4" /></button>
+        </div>
+        {err && <p className="text-[12px] text-[#ba1a1a] bg-[#ffdad6]/50 rounded-lg px-3 py-2 mb-3">{err}</p>}
+        <div className="space-y-3">
+          <div>
+            <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Select Goal</label>
+            <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
+              className="w-full px-3 py-2.5 border border-[#bec9c7]/60 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00534e]/30 bg-[#fcf9f8] text-[#1c1b1b]">
+              <option value="">-- Choose a Goal --</option>
+              {goals.map(g => (
+                <option key={g.id} value={g.id}>{g.name} (${g.current} / ${g.target})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-[#3e4947] uppercase block mb-1">Contribution Amount ($)</label>
+            <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" type="number" min="0" step="0.01"
+              className="w-full px-3 py-2.5 border border-[#bec9c7]/60 rounded-xl text-[14px] focus:outline-none focus:ring-2 focus:ring-[#00534e]/30 bg-[#fcf9f8]" />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-[#bec9c7] rounded-xl text-[13px] font-semibold text-[#3e4947] hover:bg-[#f0edec]">Cancel</button>
+          <button onClick={submit} className="flex-[2] py-2.5 bg-[#fcab28] text-[#694300] rounded-xl text-[13px] font-bold hover:opacity-90 shadow-sm">
+            Add Money
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<Goal[]>(INITIAL);
+  const { goals, addGoal, contributeToGoal, deleteGoal } = useAppStore();
   const [createOpen, setCreateOpen] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [confetti, setConfetti] = useState(false);
   const [celebOpen, setCelebOpen] = useState(false);
@@ -135,21 +224,46 @@ export default function GoalsPage() {
     setTimeout(() => setConfetti(false), 3000);
   };
 
-  const handleCreateGoal = (name: string, target: number, expected: string) => {
-    const ng: Goal = {
-      id: "g" + Date.now(), name, category: "New Goal",
-      icon: <Target className="w-5 h-5" />, iconBg: "bg-[#00534e]/10",
-      ringColor: "text-[#00534e]", ringColorHex: "#00534e", textColor: "text-[#00534e]",
-      statusBg: "bg-[#00534e]/10", statusText: "text-[#00534e]", statusLabel: "On Track",
-      current: 0, target, expected, pctOffset: 351.85, pct: 0,
-    };
-    setGoals(p => [...p, ng]);
+  const handleCreateGoal = (name: string, target: number, category: string, expected: string) => {
+    const ringColorHexs = ["#00534e", "#fcab28", "#ba1a1a", "#3c4c4c"];
+    const textColors = ["text-[#00534e]", "text-[#835400]", "text-[#ba1a1a]", "text-[#3c4c4c]"];
+    const statusBgs = ["bg-[#00534e]/10", "bg-[#835400]/10", "bg-[#ba1a1a]/10", "bg-[#3c4c4c]/10"];
+    const statusTexts = ["text-[#00534e]", "text-[#835400]", "text-[#ba1a1a]", "text-[#3c4c4c]"];
+    
+    const idx = goals.length % 4;
+
+    addGoal({
+      name,
+      category,
+      ringColorHex: ringColorHexs[idx],
+      textColor: textColors[idx],
+      statusBg: statusBgs[idx],
+      statusText: statusTexts[idx],
+      statusLabel: "On Track",
+      current: 0,
+      target,
+      expected,
+    });
     showToast(`Goal "${name}" created!`);
+  };
+
+  const handleAddContribution = (goalId: string, amount: number) => {
+    contributeToGoal(goalId, amount);
+    showToast("Contribution added successfully!");
+    const g = goals.find(x => x.id === goalId);
+    if (g && g.current + amount >= g.target) {
+      triggerCelebration();
+    }
   };
 
   const totalGoals = goals.length;
   const onTrack = goals.filter(g => g.statusLabel === "On Track").length;
-  const overallPct = Math.round(goals.reduce((a, g) => a + g.pct, 0) / goals.length);
+  const overallPct = goals.length > 0 
+    ? Math.round(goals.reduce((sum, g) => {
+        const pct = g.target > 0 ? Math.min(Math.round((g.current / g.target) * 100), 100) : 0;
+        return sum + pct;
+      }, 0) / goals.length) 
+    : 0;
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -180,7 +294,7 @@ export default function GoalsPage() {
       {/* Welcome Banner */}
       <div className="bg-[#006d67] p-5 rounded-xl flex items-center justify-between border border-[#00534e]/20 shadow-sm overflow-hidden relative">
         <div className="z-10">
-          <h2 className="text-[18px] font-bold text-white mb-0.5">Welcome, Sarah! Start your journey to financial freedom.</h2>
+          <h2 className="text-[18px] font-bold text-white mb-0.5">Welcome! Start your journey to financial freedom.</h2>
           <p className="text-[13px] text-white/80">Setting a goal is the first step toward achieving your dreams. We&apos;re here to help you predict and succeed.</p>
         </div>
         <div className="hidden md:block text-white/15 shrink-0">
@@ -194,7 +308,7 @@ export default function GoalsPage() {
           <h1 className="text-[28px] font-bold text-[#1c1b1b]">Goals</h1>
           <p className="text-[14px] text-[#3e4947]">Plan your financial future and achieve your dreams.</p>
         </div>
-        <button onClick={triggerCelebration}
+        <button onClick={() => setCreateOpen(true)}
           className="bg-[#00534e] hover:opacity-90 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 text-[13px] font-bold transition-all active:scale-95">
           <Plus className="w-4 h-4" /> Create New Goal
         </button>
@@ -244,37 +358,58 @@ export default function GoalsPage() {
               </select>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {goals.map(g => (
-                <motion.div key={g.id} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
-                  <Card className="p-5 hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3 mb-5">
-                      <div className={`w-10 h-10 rounded-full ${g.iconBg} flex items-center justify-center ${g.textColor}`}>{g.icon}</div>
-                      <div>
-                        <h4 className="text-[13px] font-bold text-[#1c1b1b]">{g.name}</h4>
-                        <p className="text-[11px] text-[#6e7978]">{g.category}</p>
-                      </div>
-                    </div>
-                    <div className="flex justify-center mb-5">
-                      <Ring pct={g.pct} offset={g.pctOffset} colorHex={g.ringColorHex} label={g.name} textColor={g.textColor} />
-                    </div>
-                    <div className="text-center space-y-1">
-                      <div className={`text-[20px] font-bold ${g.textColor}`}>
-                        {fmt(g.current)} <span className="text-[14px] text-[#6e7978] font-normal">/ {fmt(g.target)}</span>
-                      </div>
-                      <p className="text-[11px] text-[#6e7978]">Expected: {g.expected}</p>
-                      <div className={`inline-block mt-3 px-3 py-0.5 ${g.statusBg} ${g.statusText} rounded-full text-[11px] font-bold`}>
-                        {g.statusLabel}
-                      </div>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
+              {goals.length === 0 ? (
+                <div className="col-span-2 bg-white border border-[#e5e2e1] rounded-2xl p-10 text-center flex flex-col items-center justify-center">
+                  <div className="text-[40px] mb-3">🎯</div>
+                  <h4 className="font-bold text-[16px] text-[#1c1b1b] mb-1">No Goals Set</h4>
+                  <p className="text-[13px] text-[#6e7978] mb-4">Set your first savings goal to track your progress.</p>
+                  <button onClick={() => setCreateOpen(true)} className="px-5 py-2.5 bg-[#00534e] text-white text-[13px] font-bold rounded-xl hover:opacity-90 shadow-sm">
+                    + Create First Goal
+                  </button>
+                </div>
+              ) : (
+                goals.map((g, idx) => {
+                  const pctVal = g.target > 0 ? Math.min(Math.round((g.current / g.target) * 100), 100) : 0;
+                  const pctOffset = 351.85 - (pctVal / 100) * 351.85;
+                  const iconBgs = ["bg-[#9ef1e9]/30", "bg-[#ffddb5]/40", "bg-[#ffdad6]/40", "bg-[#d4e6e5]/50"];
+                  const iconBg = iconBgs[idx % 4];
+                  return (
+                    <motion.div key={g.id} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
+                      <Card className="p-5 hover:shadow-md transition-shadow">
+                        <div className="flex items-center gap-3 mb-5">
+                          <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center ${g.textColor || "text-[#00534e]"}`}>
+                            {getGoalIcon(g.category)}
+                          </div>
+                          <div>
+                            <h4 className="text-[13px] font-bold text-[#1c1b1b]">{g.name}</h4>
+                            <p className="text-[11px] text-[#6e7978]">{g.category}</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-center mb-5">
+                          <Ring pct={pctVal} offset={pctOffset} colorHex={g.ringColorHex || "#00534e"} label={g.name} textColor={g.textColor || "text-[#00534e]"} />
+                        </div>
+                        <div className="text-center space-y-1">
+                          <div className={`text-[20px] font-bold ${g.textColor || "text-[#00534e]"}`}>
+                            {fmt(g.current)} <span className="text-[14px] text-[#6e7978] font-normal">/ {fmt(g.target)}</span>
+                          </div>
+                          <p className="text-[11px] text-[#6e7978]">Expected: {g.expected}</p>
+                          <div className={`inline-block mt-3 px-3 py-0.5 ${g.statusBg || "bg-[#00534e]/10"} ${g.statusText || "text-[#00534e]"} rounded-full text-[11px] font-bold`}>
+                            {g.statusLabel}
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  );
+                })
+              )}
             </div>
-            <button onClick={() => setCreateOpen(true)}
-              className="w-full mt-4 py-3.5 border border-[#bec9c7] rounded-xl text-[13px] font-semibold text-[#00534e] flex items-center justify-center gap-2 hover:bg-[#f6f3f2] transition-colors group">
-              View All Goals
-              <span className="group-hover:translate-x-1 transition-transform">→</span>
-            </button>
+            {goals.length > 0 && (
+              <button onClick={() => setCreateOpen(true)}
+                className="w-full mt-4 py-3.5 border border-[#bec9c7] rounded-xl text-[13px] font-semibold text-[#00534e] flex items-center justify-center gap-2 hover:bg-[#f6f3f2] transition-colors group">
+                Create Another Goal
+                <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -288,18 +423,21 @@ export default function GoalsPage() {
               <h3 className="text-[14px] font-bold text-[#1c1b1b]">Goal Summary</h3>
             </div>
             <div className="space-y-3">
-              {goals.map(g => (
-                <div key={g.id}>
-                  <div className="flex justify-between text-[12px] mb-1">
-                    <span className="font-semibold text-[#1c1b1b]">{g.name}</span>
-                    <span className={`font-bold ${g.textColor}`}>{g.pct}%</span>
+              {goals.map(g => {
+                const pctVal = g.target > 0 ? Math.min(Math.round((g.current / g.target) * 100), 100) : 0;
+                return (
+                  <div key={g.id}>
+                    <div className="flex justify-between text-[12px] mb-1">
+                      <span className="font-semibold text-[#1c1b1b]">{g.name}</span>
+                      <span className={`font-bold ${g.textColor || "text-[#00534e]"}`}>{pctVal}%</span>
+                    </div>
+                    <div className="h-1.5 bg-[#e5e2e1] rounded-full overflow-hidden">
+                      <motion.div className="h-full rounded-full" style={{ backgroundColor: g.ringColorHex || "#00534e" }}
+                        initial={{ width: 0 }} animate={{ width: `${pctVal}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-[#e5e2e1] rounded-full overflow-hidden">
-                    <motion.div className="h-full rounded-full" style={{ backgroundColor: g.ringColorHex }}
-                      initial={{ width: 0 }} animate={{ width: `${g.pct}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
 
@@ -357,7 +495,7 @@ export default function GoalsPage() {
             <p className="text-[13px] text-white/80">Small steps today lead to big achievements tomorrow. Keep going! 💪</p>
           </div>
         </div>
-        <button onClick={() => showToast("Opening goal funding…")}
+        <button onClick={() => setFundingOpen(true)}
           className="bg-[#fcab28] hover:opacity-90 text-[#694300] px-7 py-2.5 rounded-lg text-[13px] font-bold shadow-lg transition-all active:scale-95 whitespace-nowrap">
           Add Money to Goal
         </button>
@@ -404,6 +542,9 @@ export default function GoalsPage() {
 
       {/* Create Goal Modal */}
       <GoalModal open={createOpen} onClose={() => setCreateOpen(false)} onSave={handleCreateGoal} />
+
+      {/* Add Money Modal */}
+      <AddMoneyModal open={fundingOpen} onClose={() => setFundingOpen(false)} goals={goals} onAdd={handleAddContribution} />
     </div>
   );
 }

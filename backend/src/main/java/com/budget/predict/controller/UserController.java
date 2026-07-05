@@ -30,6 +30,7 @@ public class UserController {
         if (request.getCurrency() != null) user.setCurrency(request.getCurrency());
         if (request.getLanguage() != null) user.setLanguage(request.getLanguage());
         if (request.getPlan()     != null) user.setPlan(request.getPlan());
+        if (request.getAvatar()   != null) user.setAvatar(request.getAvatar());
         return ResponseEntity.ok(userRepository.save(user));
     }
 

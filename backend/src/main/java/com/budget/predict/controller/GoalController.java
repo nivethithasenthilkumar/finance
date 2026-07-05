@@ -8,8 +8,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/goals")
@@ -70,11 +72,33 @@ public class GoalController {
     }
 
     @PostMapping("/bulk")
+    @Transactional
+    @SuppressWarnings("unchecked")
     public ResponseEntity<?> bulk(@RequestBody Map<String, Object> body) {
         String email = (String) body.get("email");
         Optional<User> userOpt = userRepo.findByEmail(email);
         if (userOpt.isEmpty()) return ResponseEntity.notFound().build();
-        goalRepo.deleteByUser(userOpt.get());
+        User user = userOpt.get();
+        goalRepo.deleteByUser(user);
+        
+        List<Map<String, Object>> list = (List<Map<String, Object>>) body.get("goals");
+        if (list != null) {
+            for (Map<String, Object> map : list) {
+                Goal g = new Goal();
+                g.setUser(user);
+                g.setName((String) map.get("name"));
+                g.setCategory((String) map.get("category"));
+                g.setRingColorHex((String) map.get("ringColorHex"));
+                g.setTextColor((String) map.get("textColor"));
+                g.setStatusBg((String) map.get("statusBg"));
+                g.setStatusText((String) map.get("statusText"));
+                g.setStatusLabel((String) map.get("statusLabel"));
+                g.setCurrent(map.get("current") != null ? ((Number) map.get("current")).doubleValue() : 0.0);
+                g.setTarget(map.get("target") != null ? ((Number) map.get("target")).doubleValue() : 0.0);
+                g.setExpected((String) map.get("expected"));
+                goalRepo.save(g);
+            }
+        }
         return ResponseEntity.ok().build();
     }
 }
